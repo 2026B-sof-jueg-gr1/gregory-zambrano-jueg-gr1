@@ -68,8 +68,31 @@ El juego cuenta con un flujo completo de dos escenas (`SelectScene` y `FightScen
   * <kbd>Enter</kbd> o <kbd>L</kbd>: Golpe normal cuerpo a cuerpo.
   * <kbd>P</kbd>: **¡Poder Especial!** (Proyectil característico).
 * **Generales:**
+  * <kbd>M</kbd>: Silenciar / Activar Música (BGM ON/OFF) o hacer clic en el botón de audio en pantalla.
   * <kbd>R</kbd>: Revancha inmediata tras el combate.
   * <kbd>ESC</kbd>: Volver al menú de selección de personajes en cualquier momento.
+
+---
+
+## 🎵 Banda Sonora Original de Street Fighter II (Sintetizada)
+
+El juego incluye un motor de síntesis de audio retro en tiempo real utilizando la **Web Audio API** (sin dependencias ni descargas externas), replicando la textura sonora clásica del chip arcade de Capcom (CPS-1):
+* **Select Screen Theme:** El legendario ritmo funk y fanfarria de selección de combatientes de SF2.
+* **Battle Theme (Guile's Theme):** El tema de combate más icónico de la historia de los videojuegos, con bajo dinámico, melodía principal a dos voces y kit de batería chiptune (bombo, caja con ruido blanco y charles).
+* **Control de Audio:** Botón interactivo en pantalla y tecla rápida <kbd>M</kbd> para activar o silenciar en cualquier momento.
+
+---
+
+## 🌐 Configuración en GitHub Pages
+
+Para visualizar el juego publicado en GitHub Pages:
+1. En tu repositorio de GitHub, ve a la pestaña **Settings** (Configuración) ⚙️.
+2. En el menú lateral izquierdo, haz clic en **Pages**.
+3. En **Build and deployment**:
+   * Si usas **GitHub Actions**: Selecciona **GitHub Actions** en la lista desplegable *Source* (el flujo `.github/workflows/pages.yml` se encargará automáticamente del despliegue en cada push a `main`).
+   * Si usas **Deploy from a branch**: Selecciona la rama `main` (o `gh-pages`) y la carpeta `/ (root)` y presiona **Save**.
+4. ¡El enlace quedará activo inmediatamente en:  
+   👉 [https://2026b-sof-jueg-gr1.github.io/gregory-zambrano-jueg-gr1/](https://2026b-sof-jueg-gr1.github.io/gregory-zambrano-jueg-gr1/)
 
 ---
 

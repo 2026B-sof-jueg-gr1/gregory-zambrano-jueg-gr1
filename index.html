@@ -2,10 +2,13 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="refresh" content="0; url=street-fighter2/" />
   <title>Street Fighter II: Ecuador Edition</title>
   <script>
-    window.location.replace("street-fighter2/");
+    const pathname = window.location.pathname;
+    const base = pathname.endsWith('/') ? pathname : pathname + '/';
+    window.location.replace(base + 'street-fighter2/');
   </script>
   <style>
     body {
@@ -43,7 +46,7 @@
 </head>
 <body>
   <h1>★ STREET FIGHTER II: ECUADOR EDITION ★</h1>
-  <p>Cargando el juego...</p>
-  <a href="street-fighter2/">Haz clic aquí si no se inicia automáticamente</a>
+  <p>Cargando Street Fighter II...</p>
+  <a href="street-fighter2/">Haz clic aquí para ingresar al combate</a>
 </body>
 </html>

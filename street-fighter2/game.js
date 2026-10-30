@@ -274,165 +274,355 @@ const STAGES = {
 };
 
 // -----------------------------------------------------------------------------
-// 2. SISTEMA DE AUDIO RETRO SINTETIZADO (Web Audio API)
+// 2. SISTEMA DE AUDIO RETRO SINTETIZADO Y BANDA SONORA STREET FIGHTER II
 // -----------------------------------------------------------------------------
+const F_NOTES = {
+  'C2': 65.41, 'C#2': 69.30, 'D2': 73.42, 'Eb2': 77.78, 'E2': 82.41, 'F2': 87.31, 'F#2': 92.50, 'G2': 98.00, 'Ab2': 103.83, 'A2': 110.00, 'Bb2': 116.54, 'B2': 123.47,
+  'C3': 130.81, 'C#3': 138.59, 'D3': 146.83, 'Eb3': 155.56, 'E3': 164.81, 'F3': 174.61, 'F#3': 185.00, 'G3': 196.00, 'Ab3': 207.65, 'A3': 220.00, 'Bb3': 233.08, 'B3': 246.94,
+  'C4': 261.63, 'C#4': 277.18, 'D4': 293.66, 'Eb4': 311.13, 'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'G4': 392.00, 'Ab4': 415.30, 'A4': 440.00, 'Bb4': 466.16, 'B4': 493.88,
+  'C5': 523.25, 'C#5': 554.37, 'D5': 587.33, 'Eb5': 622.25, 'E5': 659.25, 'F5': 698.46, 'F#5': 739.99, 'G5': 783.99, 'Ab5': 830.61, 'A5': 880.00, 'Bb5': 932.33, 'B5': 987.77,
+  'C6': 1046.50
+};
+
 const RetroAudio = {
   ctx: null,
+  masterGain: null,
+  isMuted: false,
+  currentTrack: null,
+  schedulerTimer: null,
+  nextStepTime: 0,
+  currentStep: 0,
+  noiseBuffer: null,
+
   init() {
     if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AudioCtx();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.65, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
+      this.crearBufferRuido();
     }
   },
-  play(freq, type = 'square', duration = 0.08, vol = 0.14) {
+
+  resumeAudio() {
     try {
       this.init();
-      if (!this.ctx) return;
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+      if (this.currentTrack && !this.schedulerTimer) {
+        if (this.currentTrack === 'select') this.startSelectBGM();
+        else if (this.currentTrack === 'fight') this.startFightBGM();
+      }
+    } catch (e) { }
+  },
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.65, this.ctx.currentTime);
+    }
+    return this.isMuted;
+  },
+
+  crearBufferRuido() {
+    if (!this.ctx) return;
+    const bufferSize = this.ctx.sampleRate * 1.5;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const output = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    this.noiseBuffer = buffer;
+  },
+
+  playTone(time, freq, type, duration, vol) {
+    if (this.isMuted || !this.ctx) return;
+    try {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = type;
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-      gain.gain.setValueAtTime(vol, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+      osc.frequency.setValueAtTime(freq, time);
+      gain.gain.setValueAtTime(vol, time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + duration);
+      gain.connect(this.masterGain);
+      osc.start(time);
+      osc.stop(time + duration);
     } catch (e) { }
   },
-  cursor() {
-    this.play(440, 'triangle', 0.05, 0.1);
-  },
-  confirm() {
-    this.play(523, 'square', 0.09, 0.15);
-    setTimeout(() => this.play(659, 'square', 0.14, 0.15), 85);
-  },
-  attack() {
-    this.play(260, 'sawtooth', 0.07, 0.15);
-  },
-  hit() {
-    this.play(130, 'square', 0.15, 0.22);
-  },
-  special(charId) {
+
+  playKick(time) {
+    if (this.isMuted || !this.ctx) return;
     try {
-      this.init();
-      if (!this.ctx) return;
-      if (this.ctx.state === 'suspended') this.ctx.resume();
-      const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(140, time);
+      osc.frequency.exponentialRampToValueAtTime(35, time + 0.08);
+      gain.gain.setValueAtTime(0.4, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(time);
+      osc.stop(time + 0.09);
+    } catch (e) { }
+  },
 
+  playSnare(time) {
+    if (this.isMuted || !this.ctx || !this.noiseBuffer) return;
+    try {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(900, time);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.25, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+      src.start(time);
+      src.stop(time + 0.12);
+
+      const osc = this.ctx.createOscillator();
+      const oGain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(190, time);
+      osc.frequency.exponentialRampToValueAtTime(80, time + 0.07);
+      oGain.gain.setValueAtTime(0.2, time);
+      oGain.gain.exponentialRampToValueAtTime(0.001, time + 0.07);
+      osc.connect(oGain);
+      oGain.connect(this.masterGain);
+      osc.start(time);
+      osc.stop(time + 0.07);
+    } catch (e) { }
+  },
+
+  playHiHat(time, isOpen = false) {
+    if (this.isMuted || !this.ctx || !this.noiseBuffer) return;
+    try {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(5000, time);
+      const gain = this.ctx.createGain();
+      const dur = isOpen ? 0.08 : 0.035;
+      gain.gain.setValueAtTime(isOpen ? 0.14 : 0.08, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+      src.start(time);
+      src.stop(time + dur);
+    } catch (e) { }
+  },
+
+  // --- CONTROL DEL REPRODUCTOR DE BGM STREET FIGHTER II ---
+  startSelectBGM() {
+    this.init();
+    if (this.currentTrack === 'select' && this.schedulerTimer) return;
+    this.stopBGM();
+    this.currentTrack = 'select';
+    this.currentStep = 0;
+    this.nextStepTime = this.ctx ? this.ctx.currentTime + 0.05 : 0;
+    this.schedulerTimer = setInterval(() => this.programarPasoBGM(), 40);
+  },
+
+  startFightBGM() {
+    this.init();
+    if (this.currentTrack === 'fight' && this.schedulerTimer) return;
+    this.stopBGM();
+    this.currentTrack = 'fight';
+    this.currentStep = 0;
+    this.nextStepTime = this.ctx ? this.ctx.currentTime + 0.05 : 0;
+    this.schedulerTimer = setInterval(() => this.programarPasoBGM(), 40);
+  },
+
+  stopBGM() {
+    if (this.schedulerTimer) {
+      clearInterval(this.schedulerTimer);
+      this.schedulerTimer = null;
+    }
+    this.currentTrack = null;
+  },
+
+  programarPasoBGM() {
+    if (!this.ctx || !this.currentTrack) return;
+    if (this.ctx.state === 'suspended') return;
+
+    const lookahead = 0.16;
+    while (this.nextStepTime < this.ctx.currentTime + lookahead) {
+      if (this.currentTrack === 'select') {
+        this.despacharPasoSelect(this.currentStep, this.nextStepTime);
+        const stepDur = (60 / 130) / 4; // 130 BPM
+        this.nextStepTime += stepDur;
+        this.currentStep = (this.currentStep + 1) % 32;
+      } else if (this.currentTrack === 'fight') {
+        this.despacharPasoFight(this.currentStep, this.nextStepTime);
+        const stepDur = (60 / 128) / 4; // 128 BPM
+        this.nextStepTime += stepDur;
+        this.currentStep = (this.currentStep + 1) % 128;
+      }
+    }
+  },
+
+  despacharPasoSelect(step, time) {
+    const bassNotes = [
+      'D2', 'D2', 'F2', 'D2', 'G2', 'D2', 'F2', 'C2',
+      'D2', 'D2', 'F2', 'D2', 'G2', 'A2', 'Bb2', 'A2',
+      'D2', 'D2', 'F2', 'D2', 'G2', 'D2', 'F2', 'C2',
+      'D2', 'D2', 'C2', 'D2', 'F2', 'G2', 'A2', 'C3'
+    ];
+    const bNote = bassNotes[step];
+    if (bNote && F_NOTES[bNote]) {
+      this.playTone(time, F_NOTES[bNote], 'sawtooth', 0.11, 0.22);
+    }
+
+    const chords = {
+      0: ['D4', 'F4', 'A4'], 2: ['D4', 'F4', 'A4'], 4: ['C4', 'E4', 'G4'], 6: ['D4', 'F4', 'A4'],
+      8: ['F4', 'A4', 'C5'], 10: ['G4', 'Bb4', 'D5'], 12: ['A4', 'C5', 'E5'], 14: ['G4', 'Bb4', 'D5'],
+      16: ['D4', 'F4', 'A4'], 18: ['D4', 'F4', 'A4'], 20: ['C4', 'E4', 'G4'], 22: ['D4', 'F4', 'A4'],
+      24: ['A4', 'D5', 'F5'], 26: ['G4', 'C5', 'E5'], 28: ['F4', 'Bb4', 'D5'], 30: ['E4', 'A4', 'C#5']
+    };
+    if (chords[step]) {
+      chords[step].forEach(n => {
+        if (F_NOTES[n]) this.playTone(time, F_NOTES[n], 'square', 0.14, 0.09);
+      });
+    }
+
+    if (step % 4 === 0) this.playKick(time);
+    if (step % 8 === 4) this.playSnare(time);
+    if (step % 2 === 0) this.playHiHat(time, step % 4 === 2);
+  },
+
+  despacharPasoFight(step, time) {
+    const bassPattern = [
+      'E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'B2', 'A2', 'E2', 'E2', 'G2', 'E2', 'A2', 'G2', 'F#2', 'D2',
+      'E2', 'E2', 'G2', 'E2', 'A2', 'E2', 'B2', 'A2', 'E2', 'E2', 'G2', 'E2', 'D2', 'D2', 'E2', 'G2',
+      'C2', 'C2', 'E2', 'C2', 'D2', 'D2', 'F#2', 'D2', 'E2', 'E2', 'G2', 'E2', 'A2', 'G2', 'F#2', 'D2',
+      'C2', 'C2', 'E2', 'C2', 'D2', 'D2', 'F#2', 'D2', 'E2', 'E2', 'E2', 'E2', 'G2', 'A2', 'B2', 'D3',
+      'C2', 'C2', 'E2', 'C2', 'D2', 'D2', 'F#2', 'D2', 'E2', 'E2', 'G2', 'E2', 'A2', 'G2', 'F#2', 'D2',
+      'C2', 'C2', 'E2', 'C2', 'D2', 'D2', 'F#2', 'D2', 'E2', 'E2', 'G2', 'E2', 'A2', 'G2', 'F#2', 'D2',
+      'C2', 'C2', 'E2', 'C2', 'D2', 'D2', 'F#2', 'D2', 'E2', 'E2', 'G2', 'E2', 'A2', 'G2', 'F#2', 'D2',
+      'C2', 'C2', 'E2', 'C2', 'D2', 'D2', 'F#2', 'D2', 'E2', 'E2', 'E2', 'E2', 'G2', 'A2', 'B2', 'D3'
+    ];
+    const bNote = bassPattern[step];
+    if (bNote && F_NOTES[bNote]) {
+      this.playTone(time, F_NOTES[bNote], 'sawtooth', 0.11, 0.22);
+    }
+
+    const leadNotes = {
+      0: 'B4', 4: 'A4', 8: 'G4', 12: 'A4',
+      16: 'B4', 20: 'D5', 24: 'B4', 28: 'A4',
+      32: 'G4', 36: 'A4', 40: 'B4', 44: 'D5',
+      48: 'E5', 56: 'D5', 60: 'B4',
+      64: 'E5', 68: 'D5', 72: 'B4', 76: 'D5',
+      80: 'E5', 84: 'G5', 88: 'F#5', 92: 'D5',
+      96: 'E5', 100: 'D5', 104: 'B4', 108: 'A4',
+      112: 'G4', 116: 'E4', 120: 'G4', 124: 'A4'
+    };
+    if (leadNotes[step]) {
+      const noteName = leadNotes[step];
+      if (F_NOTES[noteName]) {
+        this.playTone(time, F_NOTES[noteName], 'square', 0.28, 0.18);
+        this.playTone(time, F_NOTES[noteName] * 0.5, 'triangle', 0.28, 0.12);
+      }
+    }
+
+    if (step % 4 === 0) this.playKick(time);
+    if (step % 8 === 4) this.playSnare(time);
+    if (step % 2 === 0) this.playHiHat(time, step % 4 === 2);
+  },
+
+  // --- EFECTOS DE SONIDO DE COMBATE ---
+  play(freq, type = 'square', duration = 0.08, vol = 0.14) {
+    if (this.isMuted) return;
+    this.init();
+    if (this.ctx) {
+      this.playTone(this.ctx.currentTime, freq, type, duration, vol);
+    }
+  },
+  cursor() {
+    this.play(440, 'triangle', 0.05, 0.12);
+  },
+  confirm() {
+    this.play(523, 'square', 0.09, 0.18);
+    setTimeout(() => this.play(659, 'square', 0.14, 0.18), 85);
+  },
+  attack() {
+    this.play(260, 'sawtooth', 0.07, 0.16);
+  },
+  hit() {
+    this.play(130, 'square', 0.15, 0.24);
+  },
+  special(charId) {
+    if (this.isMuted) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const now = this.ctx.currentTime;
       switch (charId) {
         case 'alfaro':
         case 'calderon':
-          // Tajo eólico cortante
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(460, now);
-          osc.frequency.exponentialRampToValueAtTime(140, now + 0.22);
-          gain.gain.setValueAtTime(0.24, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+          this.playTone(now, 460, 'sawtooth', 0.22, 0.24);
+          this.playTone(now + 0.06, 220, 'sawtooth', 0.18, 0.2);
           break;
         case 'saenz':
         case 'ruminahui':
-          // Disparo de cañón / magma enérgico
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(160, now);
-          osc.frequency.exponentialRampToValueAtTime(700, now + 0.24);
-          gain.gain.setValueAtTime(0.28, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+          this.playTone(now, 160, 'sawtooth', 0.24, 0.28);
+          this.playTone(now + 0.06, 420, 'square', 0.2, 0.24);
           break;
         case 'espejo':
-          // Chisporroteo eléctrico
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(900, now);
-          osc.frequency.setValueAtTime(260, now + 0.06);
-          osc.frequency.setValueAtTime(800, now + 0.12);
-          gain.gain.setValueAtTime(0.22, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+          this.playTone(now, 880, 'square', 0.08, 0.22);
+          this.playTone(now + 0.06, 320, 'sawtooth', 0.12, 0.22);
+          this.playTone(now + 0.12, 740, 'square', 0.1, 0.22);
           break;
         case 'atahualpa':
-          // Campana resonante sagrada Inti
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(587.33, now);
-          osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.28);
-          gain.gain.setValueAtTime(0.3, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          this.playTone(now, 587.33, 'triangle', 0.28, 0.3);
+          this.playTone(now + 0.06, 1174.66, 'sine', 0.24, 0.25);
           break;
         case 'amaguana':
-          // Frecuencia baja telúrica
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(90, now);
-          osc.frequency.exponentialRampToValueAtTime(180, now + 0.14);
-          osc.frequency.exponentialRampToValueAtTime(45, now + 0.26);
-          gain.gain.setValueAtTime(0.35, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+          this.playTone(now, 90, 'sine', 0.26, 0.35);
+          this.playTone(now + 0.08, 180, 'sawtooth', 0.18, 0.25);
           break;
         case 'matilde':
-          // Acorde astral armónico
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(659.25, now);
-          osc.frequency.exponentialRampToValueAtTime(1318.5, now + 0.22);
-          gain.gain.setValueAtTime(0.26, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          this.playTone(now, 659.25, 'sine', 0.25, 0.26);
+          this.playTone(now + 0.07, 1318.5, 'triangle', 0.2, 0.22);
           break;
         default:
           this.fireball();
-          return;
       }
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(now + 0.32);
     } catch (e) {
       this.fireball();
     }
   },
   fireball() {
-    try {
-      this.init();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(180, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(750, this.ctx.currentTime + 0.22);
-      gain.gain.setValueAtTime(0.18, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.24);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + 0.24);
-    } catch (e) { }
+    this.play(240, 'sawtooth', 0.22, 0.2);
   },
   specialHit() {
-    this.play(90, 'sawtooth', 0.26, 0.28);
-    setTimeout(() => this.play(60, 'square', 0.2, 0.2), 60);
+    this.play(90, 'sawtooth', 0.26, 0.3);
+    setTimeout(() => this.play(60, 'square', 0.2, 0.25), 60);
   },
   jump() {
-    try {
-      this.init();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(220, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(560, this.ctx.currentTime + 0.14);
-      gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + 0.14);
-    } catch (e) { }
+    this.play(280, 'sine', 0.14, 0.14);
   },
   victory() {
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, idx) => {
-      setTimeout(() => this.play(freq, 'square', 0.18, 0.18), idx * 120);
+      setTimeout(() => this.play(freq, 'square', 0.18, 0.22), idx * 110);
     });
   }
 };
+
+// Activar audio y reanudar contexto con cualquier acción del usuario
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', () => RetroAudio.resumeAudio(), { once: false });
+  window.addEventListener('pointerdown', () => RetroAudio.resumeAudio(), { once: false });
+}
 
 // -----------------------------------------------------------------------------
 // 3. RESPALDO PROCEDURAL (Garantiza ejecución sin importar recursos faltantes)
@@ -559,10 +749,37 @@ class SelectScene extends Phaser.Scene {
       p2Confirm1: Phaser.Input.Keyboard.KeyCodes.ENTER,
       p2Confirm2: Phaser.Input.Keyboard.KeyCodes.L,
       p2Enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
-      p2L: Phaser.Input.Keyboard.KeyCodes.L
+      p2L: Phaser.Input.Keyboard.KeyCodes.L,
+      muteKey: Phaser.Input.Keyboard.KeyCodes.M
     });
 
+    this.crearBotonAudio();
+    RetroAudio.startSelectBGM();
     this.actualizarUI();
+  }
+
+  crearBotonAudio() {
+    this.audioBtn = this.add.text(780, 20, RetroAudio.isMuted ? '🔇 BGM: OFF [M]' : '🔊 BGM: ON [M]', {
+      fontFamily: 'system-ui, sans-serif',
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: RetroAudio.isMuted ? '#ef4444' : '#fbbf24',
+      backgroundColor: '#0f172a',
+      padding: { x: 8, y: 4 }
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }).setDepth(100);
+
+    this.audioBtn.on('pointerdown', () => {
+      RetroAudio.resumeAudio();
+      RetroAudio.toggleMute();
+      this.actualizarBotonAudio();
+    });
+  }
+
+  actualizarBotonAudio() {
+    if (this.audioBtn) {
+      this.audioBtn.setText(RetroAudio.isMuted ? '🔇 BGM: OFF [M]' : '🔊 BGM: ON [M]');
+      this.audioBtn.setColor(RetroAudio.isMuted ? '#ef4444' : '#fbbf24');
+    }
   }
 
   crearTituloArcade() {
@@ -1090,7 +1307,14 @@ class SelectScene extends Phaser.Scene {
   }
 
   update() {
-    if (!this.keys || this.transitionStarted) return;
+    if (!this.keys) return;
+
+    if (this.keys.muteKey && Phaser.Input.Keyboard.JustDown(this.keys.muteKey)) {
+      RetroAudio.toggleMute();
+      this.actualizarBotonAudio();
+    }
+
+    if (this.transitionStarted) return;
 
     // --- P1 (A / D horizontal, W / S vertical) ---
     if (!this.p1Locked) {
@@ -1267,11 +1491,38 @@ class FightScene extends Phaser.Scene {
       p2Special: Phaser.Input.Keyboard.KeyCodes.P,
 
       restart: Phaser.Input.Keyboard.KeyCodes.R,
-      esc: Phaser.Input.Keyboard.KeyCodes.ESC
+      esc: Phaser.Input.Keyboard.KeyCodes.ESC,
+      muteKey: Phaser.Input.Keyboard.KeyCodes.M
     });
 
     this.crearHUD();
+    this.crearBotonAudio();
+    RetroAudio.startFightBGM();
     this.cameras.main.fadeIn(300, 0, 0, 0);
+  }
+
+  crearBotonAudio() {
+    this.audioBtn = this.add.text(780, 20, RetroAudio.isMuted ? '🔇 BGM: OFF [M]' : '🔊 BGM: ON [M]', {
+      fontFamily: 'system-ui, sans-serif',
+      fontSize: '11px',
+      fontWeight: 'bold',
+      color: RetroAudio.isMuted ? '#ef4444' : '#fbbf24',
+      backgroundColor: '#0f172a',
+      padding: { x: 8, y: 4 }
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true }).setDepth(100);
+
+    this.audioBtn.on('pointerdown', () => {
+      RetroAudio.resumeAudio();
+      RetroAudio.toggleMute();
+      this.actualizarBotonAudio();
+    });
+  }
+
+  actualizarBotonAudio() {
+    if (this.audioBtn) {
+      this.audioBtn.setText(RetroAudio.isMuted ? '🔇 BGM: OFF [M]' : '🔊 BGM: ON [M]');
+      this.audioBtn.setColor(RetroAudio.isMuted ? '#ef4444' : '#fbbf24');
+    }
   }
 
   crearHUD() {
@@ -1398,7 +1649,13 @@ class FightScene extends Phaser.Scene {
   update() {
     if (!this.keys) return;
 
+    if (this.keys.muteKey && Phaser.Input.Keyboard.JustDown(this.keys.muteKey)) {
+      RetroAudio.toggleMute();
+      this.actualizarBotonAudio();
+    }
+
     if (this.keys.esc && Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
+      RetroAudio.startSelectBGM();
       this.scene.start('SelectScene');
       return;
     }
@@ -1408,10 +1665,12 @@ class FightScene extends Phaser.Scene {
         (this.keys.p1Attack && Phaser.Input.Keyboard.JustDown(this.keys.p1Attack)) ||
         (this.keys.p2Attack && Phaser.Input.Keyboard.JustDown(this.keys.p2Attack))
       ) {
+        RetroAudio.startSelectBGM();
         this.scene.start('SelectScene');
         return;
       }
       if (this.keys.restart && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+        RetroAudio.startFightBGM();
         this.scene.restart({ p1: this.p1Data, p2: this.p2Data });
         return;
       }
@@ -1838,6 +2097,7 @@ class FightScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
   declararKO(ganadorNum) {
     this.gameOver = true;
+    RetroAudio.stopBGM();
     this.jugador1.setVelocityX(0);
     this.jugador2.setVelocityX(0);
 
